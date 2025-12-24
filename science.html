@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Quantum Gravity Field (NTSEC Exhibit Mode)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000005;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; /* 加入微軟正黑體 */
+            user-select: none; 
+        }
+        canvas {
+            display: block;
+            width: 100vw; 
+            height: 100vh;
+            transform: scaleX(-1); /* 預設鏡像 */
+            filter: contrast(1.2) brightness(1.2);
+        }
+        
+        /* --- 修改：製作單位文字設定 (取代原本的 Logo) --- */
+        #credit-text {
+            position: absolute;
+            bottom: 25px;        /* 距離底部位置 */
+            left: 50%;           /* 水平置中 */
+            transform: translateX(-50%);
+            color: #ffffff;      /* 白色文字 */
+            font-size: 20px;     /* 字體大小 */
+            font-weight: 400;
+            letter-spacing: 3px; /* 增加字距提升質感 */
+            opacity: 0.9;
+            pointer-events: none;
+            z-index: 20;
+            /* 加入一點科技感的藍色發光效果 */
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.7);
+        }
+
+        /* 右下角解說文字設定 */
+        #description {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 350px;
+            color: #fff;
+            background: rgba(0, 10, 30, 0.6);
+            padding: 15px;
+            border-right: 3px solid #00ffff;
+            border-radius: 10px 0 10px 10px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+            font-size: 16px;
+            line-height: 1.6;
+            text-align: justify;
+            pointer-events: none;
+            z-index: 20;
+            backdrop-filter: blur(3px);
+        }
+
+        /* 左上角資訊面板 */
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #a0c0ff;
+            background: rgba(0, 10, 30, 0.8);
+            padding: 20px;
+            border-left: 3px solid #7000ff;
+            pointer-events: none;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            border-radius: 0 10px 10px 0;
+        }
+        h1 { margin: 0 0 5px 0; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; font-size: 18px;}
+        p { margin: 5px 0; font-size: 12px; color: #7aa; }
+        .highlight { color: #fff; font-weight: bold; text-shadow: 0 0 5px #fff; }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #7000ff;
+            font-size: 14px;
+            letter-spacing: 3px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+    </style>
+</head>
+<body>
+
+    <div id="credit-text">臺灣科學教育館製作</div>
+
+    <div id="description">
+        想像你的手是宇宙中質量超大的黑洞，這些光點就是被重力捕捉的星星。因為你的重力太強了，它們逃不掉，只能繞著你轉圈圈，最後掉進去！
+    </div>
+
+    <div id="info">
+        <h1>Quantum Gravity</h1>
+        <p>狀態: <span class="highlight">奇異點偵測中</span></p>
+        <p>1. 單手: 重力漩渦 / 雙手: 蟲洞</p>
+        <p>🔴 <span class="highlight" style="color:#ff0055">按 [M] 鍵切換鏡像方向</span></p>
+    </div>
+    <div id="loading">QUANTUM CORE LOADING...</div>
+
+    <video class="input_video" style="display:none"></video>
+    <canvas class="output_canvas"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+        const loadingDiv = document.getElementById('loading');
+        
+        const resolutionScale = 0.7; 
+        const particleCount = 250;
+        let mirrorMode = true; 
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'm' || e.key === 'M') {
+                mirrorMode = !mirrorMode;
+                canvasElement.style.transform = mirrorMode ? "scaleX(-1)" : "scaleX(1)";
+            }
+        });
+
+        function resize() {
+            canvasElement.width = window.innerWidth * resolutionScale;
+            canvasElement.height = window.innerHeight * resolutionScale;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const colors = ['#00ffff', '#7000ff', '#ffffff', '#4040ff'];
+
+        class QuantumParticle {
+            constructor() {
+                this.init();
+            }
+            init() {
+                this.x = Math.random() * canvasElement.width;
+                this.y = Math.random() * canvasElement.height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.size = Math.random() * 2 + 0.5;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.mass = Math.random() * 0.5 + 0.5; 
+            }
+            draw() {
+                const speed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                const length = Math.min(speed * 2, 20); 
+                canvasCtx.beginPath();
+                canvasCtx.strokeStyle = this.color;
+                canvasCtx.lineWidth = this.size;
+                canvasCtx.moveTo(this.x, this.y);
+                canvasCtx.lineTo(this.x - this.vx * 2, this.y - this.vy * 2);
+                canvasCtx.stroke();
+            }
+            update(handPoints, isWormhole) {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0) this.x = canvasElement.width;
+                if (this.x > canvasElement.width) this.x = 0;
+                if (this.y < 0) this.y = canvasElement.height;
+                if (this.y > canvasElement.height) this.y = 0;
+
+                let influenced = false;
+                for (let point of handPoints) {
+                    let dx = point.x - this.x;
+                    let dy = point.y - this.y;
+                    let distSq = dx*dx + dy*dy;
+                    let range = isWormhole ? 400 * resolutionScale : 250 * resolutionScale;
+                    
+                    if (distSq < range * range && distSq > 100) { 
+                        influenced = true;
+                        let dist = Math.sqrt(distSq);
+                        let gravityStrength = isWormhole ? 2.0 : 0.8;
+                        let gravityForce = gravityStrength / (dist * 0.1); 
+                        let swirlDirection = isWormhole ? -1 : 1; 
+                        let swirlStrength = 0.15;
+                        let nx = dx / dist;
+                        let ny = dy / dist;
+
+                        this.vx += nx * gravityForce * this.mass;
+                        this.vy += ny * gravityForce * this.mass;
+                        this.vx += -ny * swirlStrength * swirlDirection;
+                        this.vy += nx * swirlStrength * swirlDirection;
+                    }
+                }
+                if (!influenced) {
+                    this.vx *= 0.98; 
+                    this.vy *= 0.98;
+                    this.vx += (Math.random() - 0.5) * 0.1;
+                    this.vy += (Math.random() - 0.5) * 0.1;
+                } else {
+                    this.vx *= 0.96; 
+                    this.vy *= 0.96;
+                }
+            }
+        }
+
+        const particles = [];
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new QuantumParticle());
+        }
+
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 0, 
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
+        });
+        camera.start();
+
+        function onResults(results) {
+            loadingDiv.style.display = 'none';
+            canvasCtx.fillStyle = 'rgba(0, 5, 20, 0.2)'; 
+            canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+
+            let handPoints = [];
+            
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    const x = landmarks[9].x * canvasElement.width;
+                    const y = landmarks[9].y * canvasElement.height;
+                    handPoints.push({x, y});
+
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(x, y, 10, 0, Math.PI*2);
+                    canvasCtx.fillStyle = '#fff';
+                    canvasCtx.shadowBlur = 20;
+                    canvasCtx.shadowColor = '#00ffff';
+                    canvasCtx.fill();
+                    canvasCtx.shadowBlur = 0; 
+                }
+            }
+
+            let isWormhole = false;
+            if (handPoints.length === 2) {
+                const dx = handPoints[0].x - handPoints[1].x;
+                const dy = handPoints[0].y - handPoints[1].y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(handPoints[0].x, handPoints[0].y);
+                canvasCtx.lineTo(handPoints[1].x, handPoints[1].y);
+                canvasCtx.strokeStyle = `rgba(112, 0, 255, ${1 - dist/300})`;
+                canvasCtx.lineWidth = 2;
+                canvasCtx.stroke();
+
+                if (dist < 150 * resolutionScale) {
+                    isWormhole = true;
+                    const mx = (handPoints[0].x + handPoints[1].x) / 2;
+                    const my = (handPoints[0].y + handPoints[1].y) / 2;
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(mx, my, 60 + Math.random()*10, 0, Math.PI*2);
+                    canvasCtx.strokeStyle = '#fff';
+                    canvasCtx.lineWidth = 3;
+                    canvasCtx.stroke();
+                }
+            }
+
+            particles.forEach(p => {
+                p.update(handPoints, isWormhole);
+                p.draw();
+            });
+        }
+    </script>
+</body>
+</html>
